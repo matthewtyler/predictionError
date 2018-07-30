@@ -1,0 +1,13 @@
+Package: predictionError
+Title: Tools for using predictions in statistical inference
+Version: 0.0.0.9000
+Authors@R: person("Matthew", "Tyler", email = "mdtyler@stanford.edu", role = c("aut", "cre"))
+Description: blank
+URL: https://github.com/matthewtyler/predictionError
+Depends: R (>= 3.3.2)
+License: GPL-3
+Encoding: UTF-8
+LazyData: true
+Imports:
+	boot
+RoxygenNote: 6.1.0
