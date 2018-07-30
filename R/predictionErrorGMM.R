@@ -52,9 +52,9 @@ predictionErrorGMM <- function(Yl, Xl, Zl, Vl = NULL,
     }
 
     if (is.null(Vl)){
-      Vl <- rep(1, length(Yl))
-      Vu <- rep(1, length(Yu))
-      if (!is.null(Yt)) Vt <- rep(1, length(Yt))
+      Vl <- as.matrix(rep(1, length(Yl)))
+      Vu <- as.matrix(rep(1, length(Yu)))
+      if (!is.null(Yt)) Vt <- as.matrix(rep(1, length(Yt)))
     }
 
     N_L <- length(Yl)
