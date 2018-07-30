@@ -2,5 +2,5 @@
 
 To install:
 ```R
-devtools::install_github("matthewtyler/MultiScale")
+devtools::install_github("matthewtyler/predictionError")
 ```
