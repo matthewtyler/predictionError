@@ -6,7 +6,7 @@ devtools::install_github("matthewtyler/predictionError")
 ```
 
 Simple Example:
-```
+```R
 set.seed(1234)
 n <- 2e3
 n_v <- 150
