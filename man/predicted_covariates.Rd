@@ -4,9 +4,10 @@
 \alias{predicted_covariates}
 \title{GMM estimator for models with (imperfectly) predicted covariates}
 \usage{
-predicted_covariates(y, Xu, Xo, Zu, v, t, p, max_iter = 1,
-  ER_test_signif_level = 0.05, confint_signif_level = 0.05,
-  ER_test = TRUE, include_intercept = TRUE, verbose = TRUE)
+predicted_covariates(y, Xu, Xo, Zu, v, t, p, ER_test_signif_level = 0.05,
+  confint_signif_level = 0.05, ER_test = TRUE,
+  include_intercept = TRUE, min_iter = 2, max_iter = 25,
+  tol = 0.01, verbose = TRUE)
 }
 \arguments{
 \item{y}{vector of n outcome values}
@@ -23,8 +24,6 @@ predicted_covariates(y, Xu, Xo, Zu, v, t, p, max_iter = 1,
 
 \item{p}{vector of n 1/0 where v[i] == 1 if unit i is primary sample, == 0 otherwise; sum(p) == 0 is allowed, but then it wouldn't make sense to use this package}
 
-\item{max_iter}{default is 1 for two-step GMM; the GMM estimator estimates beta max_iter + 1 times, with the first step using the labeled-only estimator to calculate the weighting matrix}
-
 \item{ER_test_signif_level}{default is 0.05; significance level for the ER test warning message, but note that the pvalue itself is not suppreseed}
 
 \item{confint_signif_level}{default is 0.05; 1 - confint_signif_level determines the confidence level for the provided GMM estimator confidence intervals}
@@ -32,6 +31,14 @@ predicted_covariates(y, Xu, Xo, Zu, v, t, p, max_iter = 1,
 \item{ER_test}{default is TRUE; if TRUE, uses the validation sample to test the required exclusion restriction: `E(epsilon z_u) = 0' via Sargan's J-test results from the \code{gmm} package; see our paper for construction of the test}
 
 \item{include_intercept}{default is TRUE; if TRUE, will append a columns of ones to Xo, inducing an intercept term in the model y ~ X}
+
+\item{min_iter}{default is 2; min_iter - 1 determines how many iterations the GMM weighting matrix is based on both unlabeled and labeled data}
+
+\item{max_iter}{default is 25; determines how many iterations the GMM estimator will take before quitting}
+
+\item{tol}{default is 0.01; the algorithm uses [min_iter, max_iter] iterations, stopping if percent changes in beta are < tol for each element of beta}
+
+\item{verbose}{default is TRUE; tells the function whether to print convergence and other warnings}
 }
 \value{
 A list of

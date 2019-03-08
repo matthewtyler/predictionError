@@ -12,11 +12,14 @@
 #' @param v vector of n 1/0 where v[i] == 1 if unit i is validation sample, == 0 otherwise; sum(v) > 0 is required
 #' @param t vector of n 1/0 where v[i] == 1 if unit i is training sample, == 0 otherwise; sum(t) == 0 is allowed
 #' @param p vector of n 1/0 where v[i] == 1 if unit i is primary sample, == 0 otherwise; sum(p) == 0 is allowed, but then it wouldn't make sense to use this package
-#' @param max_iter default is 1 for two-step GMM; the GMM estimator estimates beta max_iter + 1 times, with the first step using the labeled-only estimator to calculate the weighting matrix
 #' @param ER_test_signif_level default is 0.05; significance level for the ER test warning message, but note that the pvalue itself is not suppreseed
 #' @param confint_signif_level default is 0.05; 1 - confint_signif_level determines the confidence level for the provided GMM estimator confidence intervals
 #' @param ER_test default is TRUE; if TRUE, uses the validation sample to test the required exclusion restriction: `E(epsilon z_u) = 0' via Sargan's J-test results from the \code{gmm} package; see our paper for construction of the test
 #' @param include_intercept default is TRUE; if TRUE, will append a columns of ones to Xo, inducing an intercept term in the model y ~ X
+#' @param max_iter default is 25; determines how many iterations the GMM estimator will take before quitting
+#' @param min_iter default is 2; min_iter - 1 determines how many iterations the GMM weighting matrix is based on both unlabeled and labeled data
+#' @param tol default is 0.01; the algorithm uses [min_iter, max_iter] iterations, stopping if percent changes in beta are < tol for each element of beta
+#' @param verbose default is TRUE; tells the function whether to print convergence and other warnings
 #' @return A list of
 #' \itemize{
 #' \item{GMM estimated coefficients \code{beta}}
@@ -53,9 +56,10 @@
 #' predicted_covariates(y, Xu, Xo, Zu, v, t, p)
 #' @export
 predicted_covariates <- function(y, Xu, Xo, Zu, v, t, p,
-  max_iter = 1, ER_test_signif_level = 0.05,
+  ER_test_signif_level = 0.05,
   confint_signif_level = 0.05,
   ER_test = TRUE, include_intercept = TRUE,
+  min_iter = 2, max_iter = 25, tol = 0.01,
   verbose = TRUE) {
   
   n_v <- sum(v)
@@ -82,68 +86,62 @@ predicted_covariates <- function(y, Xu, Xo, Zu, v, t, p,
 
   d_x <- NCOL(X)
   d_z <- NCOL(Z)
-  d_xz <- d_x * d_z
 
-  alpha_reg <- lm(X ~ Z - 1, subset = v == 1)
-  alpha_hat <- matrix(coef(alpha_reg), ncol = 1)
+  Gamma_reg <- lm(X ~ Z - 1, subset = v == 1)
+  # lm()'s Gamma needs to be transposed to be conformable with ours
+  Gamma_hat <- t(coef(Gamma_reg))
+  X_hat <- predict(Gamma_reg, newdata = data.frame(Z))
   eta_hat <- array(NA, dim = c(n, d_x))
-  eta_hat[v == 1, ] <- resid(alpha_reg)
-  X_hat <- predict(alpha_reg, newdata = data.frame(Z))
+  eta_hat[v == 1, ] <- resid(Gamma_reg)  
 
   beta_hat <- coef(lab_only <- lm(y ~ X - 1, subset = p == 0))
 
-  b <- c(t(X[p == 0, ]) %*% y[p == 0] / (n_t + n_v),
-    t(X_hat[t == 0, ]) %*% y[t == 0] / (n_p + n_v))
+  B <- c(t(X[p == 0, ]) %*% y[p == 0] / (n_t + n_v),
+    t(Z[t == 0, ]) %*% y[t == 0] / (n_p + n_v))
   A <- rbind(crossprod_self(X[p == 0, ]) / (n_t + n_v),
-    crossprod_self(X_hat[t == 0, ]) / (n_p + n_v))
+    t(Z[t == 0, ]) %*% X_hat[t == 0, ] / (n_p + n_v))
 
   lam_p <- n_v / (n_p + n_v)
   lam_t <- n_v / (n_t + n_v)
 
   new_beta <- function(W) {
     temp <- t(A) %*% W
-    return(solve(temp %*% A) %*% temp %*% b)
+    return(solve(temp %*% A) %*% temp %*% B)
   }
 
-  alpha_error <- array(0, dim = c(n, d_xz))
+  Gamma_error <- array(0, dim = c(n, d_z, d_x))
   for (i in 1:n) {
-    if (v[i] == 1) {
-      alpha_error[i, ] <- Z[i, ] * rep(eta_hat[i, ], each = d_x)
-      ## above is equiavlent to t(I_{d_x} \otimes Z[i,]) %*% eta_hat[i, ]  
-    }
+    if (v[i] == 1) Gamma_error[i, , ] <- Z[i, ] %*% t(eta_hat[i, ])
   }
-
-  L2 <- crossprod_self(Z[t == 0, ]) / (n_p + n_v)
-  L2 <- kronecker(diag(d_x), L2)
-  L2 <- solve(L2)
 
   weight_matrix <- function(beta) {
 
-    L1 <- array(0, dim = c(n, d_x, d_xz))
+    m2_error <- array(0, dim = c(n, d_z))
     for (i in 1:n) {
-      if (v[i] + p[i] > 0) L1[i, , ] <- X_hat[i, ] %*% t(rep(beta, each = d_x) * Z[i,])
-      ## above is equivalent to t(beta) %*% (I_{d_x} \otimes Z[i,])
+      if (v[i] == 1) m2_error[i,] <- Gamma_error[i, , ] %*% beta
     }
-    L1 <- apply(L1, c(2, 3), sum) / (n_p + n_v)
-
-    L <- L1 %*% L2
-    alpha_error <- alpha_error %*% t(L) # same as left-multiplying the rows by L
 
     m1 <- array(0, dim = c(n, d_x))
-    m2 <- array(0, dim = c(n, d_x))
+    m2 <- array(0, dim = c(n, d_z))
     for (i in 1:n) {
       if (p[i] == 0) m1[i, ] <- lam_t * c(y[i] - X[i,] %*% beta) * X[i,]
-      if (t[i] == 0) m2[i, ] <- lam_p * c(y[i] - X_hat[i, ] %*% beta) * X_hat[i,]
+      if (t[i] == 0) m2[i, ] <- lam_p * c(y[i] - X_hat[i, ] %*% beta) * Z[i,]
     }
-    m2 <- m2 + alpha_error
+    m2 <- m2 + m2_error
     m <- cbind(m1, m2)
     return(solve(crossprod_self(m) / n_v))
   }
 
   for (iter in 1:max_iter) {
     W <- weight_matrix(beta_hat)
+    beta_old <- beta_hat
     beta_hat <- new_beta(W)
+    if (iter >= min_iter & check_conv(beta_old, beta_hat, tol)) {
+      if (verbose) message(paste0("Convergence after ", iter, " iterations!"))
+      break
+    }
   } 
+  if (iter == max_iter & verbose) message(paste0("WARNING: Failure to converge after ", max_iter, "iterations!"))
   
   W <- weight_matrix(beta_hat)
   vcov <- solve(t(A) %*% W %*% A) / n_v
@@ -153,7 +151,7 @@ predicted_covariates <- function(y, Xu, Xo, Zu, v, t, p,
   
   if (ER_test) {
     pval <- perform_test(y[v == 1], X[v == 1,], all_instruments[v == 1,])
-    if (verbose & pval < ER_test_signif_level) message(paste0("WARNING: A statistical test of the required assumption `Exclusion Restriction: E(epsilon z_u) = 0' was rejected at the ", signif(ER_test_signif_level, 3), " significance level!"))
+    if (verbose & pval < ER_test_signif_level) warning(paste0("WARNING: A statistical test of the required assumption `Exclusion Restriction: E(epsilon z_u) = 0' was rejected at the ", signif(ER_test_signif_level, 3), " significance level!"), immediate. = TRUE)
   } else {
     pval <- NA
   }
@@ -162,10 +160,18 @@ predicted_covariates <- function(y, Xu, Xo, Zu, v, t, p,
     vcov = vcov, ER_pval = pval, lab_only = coef(lab_only)))
 }
 
+
 crossprod_self <- function(X) t(X) %*% X
 
 perform_test <- function(y, X, Z) {
   res <- gmm(g = y ~ X - 1, x = Z, vcov = "iid")
   pval <- summary(res)$stest$test[2]
   return(pval)
+}
+
+check_conv <- function(a, b, tol) {
+  K <- length(a)
+  for (k in 1:K)
+    if (log(abs(a[k] - b[k])) - log(abs(a[k])) >= log(tol)) return(FALSE)
+  return(TRUE)
 }
