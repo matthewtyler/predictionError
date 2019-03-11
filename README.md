@@ -1,4 +1,4 @@
-# PredictionError
+# predictionError
 
 To install:
 ```R
