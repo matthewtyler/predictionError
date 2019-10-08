@@ -18,7 +18,7 @@ predicted_covariates_aux_first(y, Xu, Xo, Zu, a, v, t, p,
 
 \item{Zu}{matrix/vector of n fully observed predicted Xu values; must be observed when v or p == 1}
 
-\item{a}{vector of n 1/0 where a[i] == 1 if unit i is in the auxiliary sample, == 0 otherwise; sum(a) > 0 is required}
+\item{a}{vector of n 1/0 where a[i] == 1 if unit i is in the auxiliary sample, == 0 otherwise; sum(a) == 0 is allowed}
 
 \item{v}{vector of n 1/0 where v[i] == 1 if unit i is validation sample, == 0 otherwise; sum(v) > 0 is required}
 
@@ -58,23 +58,20 @@ Optimally combines OLS and 2SLS on labeled and unlabeled data,
 given an exclusion restriction. See associated paper for details.
 }
 \examples{
-set.seed(1234)
-n <- 2e3
-n_a <- 150
+set.seed(pi / 2)
+n <- 2e5
+n_a <- 1500
 n_v <- 150
 n_t <- 100
 n_p <- n - n_a - n_v - n_t
 
-placements <- rmultinom(n, 1, c(n_a, n_v, n_t, n_p))
-placements <- apply(placements, 2, function(u) which(u == 1))
-
-a <- as.numeric(placements == 1)
-v <- as.numeric(placements == 2)
-t <- as.numeric(placements == 3)
-p <- as.numeric(placements == 4)
+v <- as.numeric((1:n) \%in\% (1:n_v))
+t <- as.numeric((1:n) \%in\% (n_v + 1:n_t))
+p <- as.numeric((1:n) \%in\% (n_v + n_t + 1:n_p))
+a <- as.numeric((1:n) \%in\% (n_v + n_t + n_p + 1:n_a))
 
 beta_true <- c(0.2, 0.4, 0.3)
-sigma <- 1.0
+sigma <- 1.0 * 10
 
 Xu <- rnorm(n)
 Xo <- rnorm(n)
@@ -84,5 +81,9 @@ Zu <- Xu + rnorm(n) # Zu predicts Xu without being correlated with epsilon
 
 Zu[t == 1] <- NA
 Xu[p == 1] <- NA
+y[a == 1] <- NA
+
 predicted_covariates_aux_first(y, Xu, Xo, Zu, a, v, t, p)
+predicted_covariates(y[a == 0], Xu[a == 0], Xo[a == 0],
+Zu[a == 0], v[a == 0], t[a == 0], p[a == 0])
 }

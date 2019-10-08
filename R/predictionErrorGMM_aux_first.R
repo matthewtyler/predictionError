@@ -9,7 +9,7 @@
 #' @param Xu matrix/vector of n possibly unobserved (i.e., NA) covariate values; must be observed when v or t == 1
 #' @param Xo matrix/vector of n fully observed covariate values; may be set to NULL, but should never contain a constant term --- control the inclusion of a constant term via \code{include_intercept} option
 #' @param Zu matrix/vector of n fully observed predicted Xu values; must be observed when v or p == 1
-#' @param a vector of n 1/0 where a[i] == 1 if unit i is in the auxiliary sample, == 0 otherwise; sum(a) > 0 is required
+#' @param a vector of n 1/0 where a[i] == 1 if unit i is in the auxiliary sample, == 0 otherwise; sum(a) == 0 is allowed
 #' @param v vector of n 1/0 where v[i] == 1 if unit i is validation sample, == 0 otherwise; sum(v) > 0 is required
 #' @param t vector of n 1/0 where t[i] == 1 if unit i is training sample, == 0 otherwise; sum(t) == 0 is allowed
 #' @param p vector of n 1/0 where p[i] == 1 if unit i is primary sample, == 0 otherwise; sum(p) == 0 is allowed, but then it wouldn't make sense to use this package
@@ -31,23 +31,20 @@
 #' \item{labeled-only estimator of beta \code{lab_only}}
 #' }
 #' @examples
-#' set.seed(1234)
-#' n <- 2e3
-#' n_a <- 150
+#' set.seed(pi / 2)
+#' n <- 2e5
+#' n_a <- 1500
 #' n_v <- 150
 #' n_t <- 100
 #' n_p <- n - n_a - n_v - n_t
 #' 
-#' placements <- rmultinom(n, 1, c(n_a, n_v, n_t, n_p))
-#' placements <- apply(placements, 2, function(u) which(u == 1))
-#' 
-#' a <- as.numeric(placements == 1)
-#' v <- as.numeric(placements == 2)
-#' t <- as.numeric(placements == 3)
-#' p <- as.numeric(placements == 4)
+#' v <- as.numeric((1:n) %in% (1:n_v))
+#' t <- as.numeric((1:n) %in% (n_v + 1:n_t))
+#' p <- as.numeric((1:n) %in% (n_v + n_t + 1:n_p))
+#' a <- as.numeric((1:n) %in% (n_v + n_t + n_p + 1:n_a))
 #' 
 #' beta_true <- c(0.2, 0.4, 0.3)
-#' sigma <- 1.0
+#' sigma <- 1.0 * 10
 #' 
 #' Xu <- rnorm(n)
 #' Xo <- rnorm(n)
@@ -57,7 +54,11 @@
 #' 
 #' Zu[t == 1] <- NA
 #' Xu[p == 1] <- NA
+#' y[a == 1] <- NA
+#' 
 #' predicted_covariates_aux_first(y, Xu, Xo, Zu, a, v, t, p)
+#' predicted_covariates(y[a == 0], Xu[a == 0], Xo[a == 0],
+  #' Zu[a == 0], v[a == 0], t[a == 0], p[a == 0])
 #' @export
 predicted_covariates_aux_first <- function(y, Xu, Xo, Zu, a, v, t, p,
   ER_test_signif_level = 0.05,
@@ -140,7 +141,7 @@ predicted_covariates_aux_first <- function(y, Xu, Xo, Zu, a, v, t, p,
       if (o[i] == 1) m1[i, ] <- lam_o * c(y[i] - X[i,] %*% beta) * X[i,]
       if (s[i] == 1) m2[i, ] <- lam_s * c(y[i] - X_hat[i, ] %*% beta) * Z[i,]
     }
-    m2 <- m2 + sqrt(lam_f) * m2_error
+    m2 <- m2 + lam_f * m2_error
     m <- cbind(m1, m2)
     return(solve(crossprod_self(m) / n_v))
   }
